@@ -924,12 +924,9 @@
 
         case _LOAD_GLOBAL: {
             _Py_UopsSymbol **res;
-            _Py_UopsSymbol *null = NULL;
             res = &stack_pointer[0];
             res[0] = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
-            if (oparg & 1) stack_pointer[1] = null;
-            stack_pointer += 1 + (oparg & 1);
+            stack_pointer += 1;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
@@ -962,25 +959,15 @@
 
         case _LOAD_GLOBAL_MODULE_FROM_KEYS: {
             _Py_UopsSymbol *res;
-            _Py_UopsSymbol *null = NULL;
             res = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             stack_pointer[-1] = res;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
         case _LOAD_GLOBAL_BUILTINS_FROM_KEYS: {
             _Py_UopsSymbol *res;
-            _Py_UopsSymbol *null = NULL;
             res = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             stack_pointer[-1] = res;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
@@ -1103,6 +1090,8 @@
 
         /* _INSTRUMENTED_LOAD_SUPER_ATTR is not a viable micro-op for tier 2 */
 
+        /* _INSTRUMENTED_LOAD_SUPER_METHOD is not a viable micro-op for tier 2 */
+
         case _LOAD_SUPER_ATTR_ATTR: {
             _Py_UopsSymbol *attr_st;
             attr_st = sym_new_not_null(ctx);
@@ -1112,7 +1101,7 @@
             break;
         }
 
-        case _LOAD_SUPER_ATTR_METHOD: {
+        case _LOAD_SUPER_METHOD_METHOD: {
             _Py_UopsSymbol *attr;
             _Py_UopsSymbol *self_or_null;
             attr = sym_new_not_null(ctx);
@@ -1124,18 +1113,28 @@
             break;
         }
 
-        case _LOAD_ATTR: {
+        case _LOAD_METHOD: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *self_or_null = NULL;
+            _Py_UopsSymbol *self_or_null;
             owner = stack_pointer[-1];
             (void)owner;
             attr = sym_new_not_null(ctx);
             self_or_null = sym_new_unknown(ctx);
             stack_pointer[-1] = attr;
-            if (oparg & 1) stack_pointer[0] = self_or_null;
-            stack_pointer += (oparg & 1);
+            stack_pointer[0] = self_or_null;
+            stack_pointer += 1;
             assert(WITHIN_STACK_BOUNDS());
+            break;
+        }
+
+        case _LOAD_ATTR: {
+            _Py_UopsSymbol *owner;
+            _Py_UopsSymbol *attr;
+            owner = stack_pointer[-1];
+            (void)owner;
+            attr = sym_new_not_null(ctx);
+            stack_pointer[-1] = attr;
             break;
         }
 
@@ -1176,17 +1175,12 @@
         case _LOAD_ATTR_INSTANCE_VALUE: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             owner = stack_pointer[-1];
             uint16_t offset = (uint16_t)this_instr->operand0;
             attr = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             (void)offset;
             (void)owner;
             stack_pointer[-1] = attr;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
@@ -1224,11 +1218,9 @@
         case _LOAD_ATTR_MODULE_FROM_KEYS: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             owner = stack_pointer[-2];
             uint16_t index = (uint16_t)this_instr->operand0;
             (void)index;
-            null = sym_new_null(ctx);
             attr = NULL;
             if (this_instr[-1].opcode == _NOP) {
                 // Preceding _CHECK_ATTR_MODULE_PUSH_KEYS was removed: mod is const and dict is watched.
@@ -1237,8 +1229,7 @@
                 assert(PyModule_CheckExact(mod));
                 PyObject *dict = mod->md_dict;
                 stack_pointer[-2] = attr;
-                if (oparg & 1) stack_pointer[-1] = null;
-                stack_pointer += -1 + (oparg & 1);
+                stack_pointer += -1;
                 assert(WITHIN_STACK_BOUNDS());
                 PyObject *res = convert_global_to_const(this_instr, dict);
                 if (res != NULL) {
@@ -1248,7 +1239,7 @@
                 else {
                     this_instr->opcode = _LOAD_ATTR_MODULE;
                 }
-                stack_pointer += 1 - (oparg & 1);
+                stack_pointer += 1;
                 assert(WITHIN_STACK_BOUNDS());
             }
             if (attr == NULL) {
@@ -1256,8 +1247,7 @@
                 attr = sym_new_not_null(ctx);
             }
             stack_pointer[-2] = attr;
-            if (oparg & 1) stack_pointer[-1] = null;
-            stack_pointer += -1 + (oparg & 1);
+            stack_pointer += -1;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
@@ -1278,18 +1268,15 @@
             _Py_UopsSymbol *dict;
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             dict = stack_pointer[-1];
             owner = stack_pointer[-2];
             uint16_t hint = (uint16_t)this_instr->operand0;
             attr = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             (void)hint;
             (void)owner;
             (void)dict;
             stack_pointer[-2] = attr;
-            if (oparg & 1) stack_pointer[-1] = null;
-            stack_pointer += -1 + (oparg & 1);
+            stack_pointer += -1;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
@@ -1297,17 +1284,12 @@
         case _LOAD_ATTR_SLOT: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             owner = stack_pointer[-1];
             uint16_t index = (uint16_t)this_instr->operand0;
             attr = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             (void)index;
             (void)owner;
             stack_pointer[-1] = attr;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
@@ -1318,17 +1300,12 @@
         case _LOAD_ATTR_CLASS: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             owner = stack_pointer[-1];
             PyObject *descr = (PyObject *)this_instr->operand0;
             attr = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             (void)descr;
             (void)owner;
             stack_pointer[-1] = attr;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
@@ -1714,10 +1691,10 @@
             break;
         }
 
-        case _LOAD_ATTR_METHOD_WITH_VALUES: {
+        case _LOAD_METHOD_WITH_VALUES: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *self = NULL;
+            _Py_UopsSymbol *self;
             owner = stack_pointer[-1];
             PyObject *descr = (PyObject *)this_instr->operand0;
             (void)descr;
@@ -1730,10 +1707,10 @@
             break;
         }
 
-        case _LOAD_ATTR_METHOD_NO_DICT: {
+        case _LOAD_METHOD_NO_DICT: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *self = NULL;
+            _Py_UopsSymbol *self;
             owner = stack_pointer[-1];
             PyObject *descr = (PyObject *)this_instr->operand0;
             (void)descr;
@@ -1764,10 +1741,10 @@
             break;
         }
 
-        case _LOAD_ATTR_METHOD_LAZY_DICT: {
+        case _LOAD_METHOD_LAZY_DICT: {
             _Py_UopsSymbol *owner;
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *self = NULL;
+            _Py_UopsSymbol *self;
             owner = stack_pointer[-1];
             PyObject *descr = (PyObject *)this_instr->operand0;
             (void)descr;
@@ -2256,11 +2233,11 @@
 
         case _MAKE_CALLARGS_A_TUPLE: {
             _Py_UopsSymbol *tuple;
-            _Py_UopsSymbol *kwargs_out = NULL;
+            _Py_UopsSymbol *kwargs_out;
             tuple = sym_new_not_null(ctx);
             kwargs_out = sym_new_not_null(ctx);
-            stack_pointer[-1 - (oparg & 1)] = tuple;
-            if (oparg & 1) stack_pointer[-(oparg & 1)] = kwargs_out;
+            stack_pointer[-2] = tuple;
+            stack_pointer[-1] = kwargs_out;
             break;
         }
 
@@ -2309,8 +2286,8 @@
         case _BUILD_SLICE: {
             _Py_UopsSymbol *slice;
             slice = sym_new_not_null(ctx);
-            stack_pointer[-2 - ((oparg == 3) ? 1 : 0)] = slice;
-            stack_pointer += -1 - ((oparg == 3) ? 1 : 0);
+            stack_pointer[-oparg] = slice;
+            stack_pointer += 1 - oparg;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
@@ -2633,37 +2610,26 @@
 
         case _LOAD_GLOBAL_MODULE: {
             _Py_UopsSymbol *res;
-            _Py_UopsSymbol *null = NULL;
             res = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             stack_pointer[0] = res;
-            if (oparg & 1) stack_pointer[1] = null;
-            stack_pointer += 1 + (oparg & 1);
+            stack_pointer += 1;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
         case _LOAD_GLOBAL_BUILTINS: {
             _Py_UopsSymbol *res;
-            _Py_UopsSymbol *null = NULL;
             res = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             stack_pointer[0] = res;
-            if (oparg & 1) stack_pointer[1] = null;
-            stack_pointer += 1 + (oparg & 1);
+            stack_pointer += 1;
             assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
         case _LOAD_ATTR_MODULE: {
             _Py_UopsSymbol *attr;
-            _Py_UopsSymbol *null = NULL;
             attr = sym_new_not_null(ctx);
-            null = sym_new_null(ctx);
             stack_pointer[-1] = attr;
-            if (oparg & 1) stack_pointer[0] = null;
-            stack_pointer += (oparg & 1);
-            assert(WITHIN_STACK_BOUNDS());
             break;
         }
 
