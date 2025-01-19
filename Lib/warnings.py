@@ -611,6 +611,7 @@ class deprecated:
                 else:
                     return original_new(cls)
 
+            __new__.__module__ = arg.__module__
             arg.__new__ = staticmethod(__new__)
 
             original_init_subclass = arg.__init_subclass__
@@ -635,6 +636,7 @@ class deprecated:
 
                 arg.__init_subclass__ = __init_subclass__
 
+            __init_subclass__.__module__ = arg.__module__
             arg.__deprecated__ = __new__.__deprecated__ = msg
             __init_subclass__.__deprecated__ = msg
             return arg

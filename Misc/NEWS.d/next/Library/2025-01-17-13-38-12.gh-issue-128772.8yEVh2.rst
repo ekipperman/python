@@ -1,0 +1,2 @@
+This commit fixes an issue where help(...) wasn’t working on classes
+decorated with @deprecated("...")  by preserving __module__ attribute
