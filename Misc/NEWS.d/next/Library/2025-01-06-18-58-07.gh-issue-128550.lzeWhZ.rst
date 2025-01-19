@@ -1,0 +1,1 @@
+Fix a deadlock in :class:`asyncio.TaskGroup` when using eager tasks that abort the task group too early.
