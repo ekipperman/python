@@ -1,0 +1,1 @@
+Optimize ``_pyio.FileIO.readinto`` by using :func:`os.readv` on platforms that support it which avoids an additional copy.
