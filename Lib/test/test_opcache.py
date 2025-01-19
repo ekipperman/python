@@ -1362,6 +1362,20 @@ class TestSpecializer(TestBase):
         self.assert_specialized(binary_op_add_extend, "BINARY_OP_EXTEND")
         self.assert_no_opcode(binary_op_add_extend, "BINARY_OP")
 
+        def binary_op_bitwise_extend():
+            for _ in range(100):
+                a, b = 2, 7
+                x = a | b
+                self.assertEqual(x, 7)
+                y = a & b
+                self.assertEqual(y, 2)
+                z = a ^ b
+                self.assertEqual(z, 5)
+
+        binary_op_bitwise_extend()
+        self.assert_specialized(binary_op_bitwise_extend, "BINARY_OP_EXTEND")
+        self.assert_no_opcode(binary_op_bitwise_extend, "BINARY_OP")
+
 
     @cpython_only
     @requires_specialization_ft
