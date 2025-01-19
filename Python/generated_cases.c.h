@@ -3271,7 +3271,9 @@
             last_sent_val_st = stack_pointer[-2];
             sub_iter_st = stack_pointer[-3];
             PyObject *exc_value = PyStackRef_AsPyObjectBorrow(exc_value_st);
+            #ifndef Py_TAIL_CALL_INTERP
             assert(throwflag);
+            #endif
             assert(exc_value && PyExceptionInstance_Check(exc_value));
             _PyFrame_SetStackPointer(frame, stack_pointer);
             int matches = PyErr_GivenExceptionMatches(exc_value, PyExc_StopIteration);
@@ -3288,6 +3290,8 @@
                 _PyErr_SetRaisedException(tstate, Py_NewRef(exc_value));
                 monitor_reraise(tstate, frame, this_instr);
                 stack_pointer = _PyFrame_GetStackPointer(frame);
+                none = PyStackRef_NULL;
+                value = PyStackRef_NULL;
                 goto exception_unwind;
             }
             stack_pointer[-3] = none;
@@ -5036,7 +5040,7 @@
             {
                 retval = val;
                 #if TIER_ONE
-                assert(frame != &entry_frame);
+                assert(!frame->is_entry_frame);
                 #endif
                 _PyStackRef temp = retval;
                 stack_pointer += -1;
@@ -5090,7 +5094,7 @@
                 // The compiler treats any exception raised here as a failed close()
                 // or throw() call.
                 #if TIER_ONE
-                assert(frame != &entry_frame);
+                assert(!frame->is_entry_frame);
                 #endif
                 frame->instr_ptr++;
                 PyGenObject *gen = _PyGen_GetGeneratorFromFrame(frame);
@@ -5134,7 +5138,7 @@
             INSTRUCTION_STATS(INTERPRETER_EXIT);
             _PyStackRef retval;
             retval = stack_pointer[-1];
-            assert(frame == &entry_frame);
+            assert(frame->is_entry_frame);
             assert(_PyFrame_IsIncomplete(frame));
             /* Restore previous frame and return. */
             tstate->current_frame = frame->previous;
@@ -7218,7 +7222,7 @@
             _PyStackRef res;
             retval = stack_pointer[-1];
             #if TIER_ONE
-            assert(frame != &entry_frame);
+            assert(!frame->is_entry_frame);
             #endif
             _PyStackRef temp = retval;
             stack_pointer += -1;
@@ -7272,7 +7276,7 @@
                 v = stack_pointer[-1];
                 PyObject *receiver_o = PyStackRef_AsPyObjectBorrow(receiver);
                 PyObject *retval_o;
-                assert(frame != &entry_frame);
+                assert(!frame->is_entry_frame);
                 if ((tstate->interp->eval_frame == NULL) &&
                     (Py_TYPE(receiver_o) == &PyGen_Type || Py_TYPE(receiver_o) == &PyCoro_Type) &&
                     ((PyGenObject *)receiver_o)->gi_frame_state < FRAME_EXECUTING)
@@ -8395,7 +8399,7 @@
             // The compiler treats any exception raised here as a failed close()
             // or throw() call.
             #if TIER_ONE
-            assert(frame != &entry_frame);
+            assert(!frame->is_entry_frame);
             #endif
             frame->instr_ptr++;
             PyGenObject *gen = _PyGen_GetGeneratorFromFrame(frame);
