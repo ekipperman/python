@@ -12,10 +12,9 @@ WritablePath.
 """
 
 import functools
-import operator
 import posixpath
 from errno import EINVAL
-from glob import _GlobberBase, _no_recurse_symlinks
+from glob import _PathGlobber, _no_recurse_symlinks
 from pathlib._os import copyfileobj
 
 
@@ -39,21 +38,6 @@ def _explode_path(path):
         path = parent
         parent, name = split(path)
     return path, names
-
-
-class PathGlobber(_GlobberBase):
-    """
-    Class providing shell-style globbing for path objects.
-    """
-
-    lexists = operator.methodcaller('exists', follow_symlinks=False)
-    add_slash = operator.methodcaller('joinpath', '')
-    scandir = operator.methodcaller('_scandir')
-
-    @staticmethod
-    def concat_path(path, text):
-        """Appends text to the given path."""
-        return path.with_segments(str(path) + text)
 
 
 class CopyReader:
@@ -355,7 +339,7 @@ class JoinablePath:
             return False
         if len(path_parts) > len(pattern_parts) and path_pattern.anchor:
             return False
-        globber = PathGlobber(sep, case_sensitive)
+        globber = _PathGlobber(sep, case_sensitive)
         for path_part, pattern_part in zip(path_parts, pattern_parts):
             match = globber.compile(pattern_part)
             if match(path_part) is None:
@@ -371,7 +355,7 @@ class JoinablePath:
             pattern = self.with_segments(pattern)
         if case_sensitive is None:
             case_sensitive = _is_case_sensitive(self.parser)
-        globber = PathGlobber(pattern.parser.sep, case_sensitive, recursive=True)
+        globber = _PathGlobber(pattern.parser.sep, case_sensitive, recursive=True)
         match = globber.compile(str(pattern))
         return match(str(self)) is not None
 
@@ -392,6 +376,14 @@ class ReadablePath(JoinablePath):
     """
     __slots__ = ()
 
+    @property
+    def info(self):
+        """
+        A PathInfo object that exposes the file type and other file attributes
+        of this path.
+        """
+        raise NotImplementedError
+
     def exists(self, *, follow_symlinks=True):
         """
         Whether this path exists.
@@ -399,26 +391,30 @@ class ReadablePath(JoinablePath):
         This method normally follows symlinks; to check whether a symlink exists,
         add the argument follow_symlinks=False.
         """
-        raise NotImplementedError
+        info = self.joinpath().info
+        return info.exists(follow_symlinks=follow_symlinks)
 
     def is_dir(self, *, follow_symlinks=True):
         """
         Whether this path is a directory.
         """
-        raise NotImplementedError
+        info = self.joinpath().info
+        return info.is_dir(follow_symlinks=follow_symlinks)
 
     def is_file(self, *, follow_symlinks=True):
         """
         Whether this path is a regular file (also True for symlinks pointing
         to regular files).
         """
-        raise NotImplementedError
+        info = self.joinpath().info
+        return info.is_file(follow_symlinks=follow_symlinks)
 
     def is_symlink(self):
         """
         Whether this path is a symbolic link.
         """
-        raise NotImplementedError
+        info = self.joinpath().info
+        return info.is_symlink()
 
     def open(self, mode='r', buffering=-1, encoding=None,
              errors=None, newline=None):
@@ -441,15 +437,6 @@ class ReadablePath(JoinablePath):
         """
         with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
             return f.read()
-
-    def _scandir(self):
-        """Yield os.DirEntry-like objects of the directory contents.
-
-        The children are yielded in arbitrary order, and the
-        special entries '.' and '..' are not included.
-        """
-        import contextlib
-        return contextlib.nullcontext(self.iterdir())
 
     def iterdir(self):
         """Yield path objects of the directory contents.
@@ -476,7 +463,7 @@ class ReadablePath(JoinablePath):
         else:
             case_pedantic = True
         recursive = True if recurse_symlinks else _no_recurse_symlinks
-        globber = PathGlobber(self.parser.sep, case_sensitive, case_pedantic, recursive)
+        globber = _PathGlobber(self.parser.sep, case_sensitive, case_pedantic, recursive)
         select = globber.selector(parts)
         return select(self)
 
@@ -503,18 +490,16 @@ class ReadablePath(JoinablePath):
             if not top_down:
                 paths.append((path, dirnames, filenames))
             try:
-                with path._scandir() as entries:
-                    for entry in entries:
-                        name = entry.name
-                        try:
-                            if entry.is_dir(follow_symlinks=follow_symlinks):
-                                if not top_down:
-                                    paths.append(path.joinpath(name))
-                                dirnames.append(name)
-                            else:
-                                filenames.append(name)
-                        except OSError:
-                            filenames.append(name)
+                for child in path.iterdir():
+                    try:
+                        if child.info.is_dir(follow_symlinks=follow_symlinks):
+                            if not top_down:
+                                paths.append(child)
+                            dirnames.append(child.name)
+                        else:
+                            filenames.append(child.name)
+                    except OSError:
+                        filenames.append(child.name)
             except OSError as error:
                 if on_error is not None:
                     on_error(error)
