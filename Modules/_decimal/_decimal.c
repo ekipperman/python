@@ -2336,14 +2336,15 @@ dec_from_long(decimal_state *state, PyTypeObject *type, PyObject *v,
     }
     if (export_long.digits) {
         const PyLongLayout *layout = PyLong_GetNativeLayout();
-        uint32_t base = (uint32_t)1 << layout->bits_per_digit;
-        uint8_t sign = export_long.negative ? MPD_NEG : MPD_POS;
-        Py_ssize_t len = export_long.ndigits;
 
-        assert(layout->bits_per_digit <= 32);
+        assert(layout->bits_per_digit < 32);
         assert(layout->digits_order == -1);
         assert(layout->digit_endianness == (PY_LITTLE_ENDIAN ? -1 : 1));
         assert(layout->digit_size == 2 || layout->digit_size == 4);
+
+        uint32_t base = (uint32_t)1 << layout->bits_per_digit;
+        uint8_t sign = export_long.negative ? MPD_NEG : MPD_POS;
+        Py_ssize_t len = export_long.ndigits;
 
         if (layout->digit_size == 4) {
             mpd_qimport_u32(MPD(dec), export_long.digits, len, sign,
@@ -3642,13 +3643,6 @@ finish:
 static PyObject *
 dec_as_long(PyObject *dec, PyObject *context, int round)
 {
-    PyLongObject *pylong;
-    digit *ob_digit;
-    size_t n;
-    mpd_t *x;
-    mpd_context_t workctx;
-    uint32_t status = 0;
-
     if (mpd_isspecial(MPD(dec))) {
         if (mpd_isnan(MPD(dec))) {
             PyErr_SetString(PyExc_ValueError,
@@ -3661,12 +3655,16 @@ dec_as_long(PyObject *dec, PyObject *context, int round)
         return NULL;
     }
 
-    x = mpd_qnew();
+    mpd_t *x = mpd_qnew();
+
     if (x == NULL) {
         PyErr_NoMemory();
         return NULL;
     }
-    workctx = *CTX(context);
+
+    mpd_context_t workctx = *CTX(context);
+    uint32_t status = 0;
+
     workctx.round = round;
     mpd_qround_to_int(x, MPD(dec), &workctx, &status);
     if (dec_addstatus(context, status)) {
@@ -3675,34 +3673,54 @@ dec_as_long(PyObject *dec, PyObject *context, int round)
     }
 
     status = 0;
-    ob_digit = NULL;
-#if PYLONG_BITS_IN_DIGIT == 30
-    n = mpd_qexport_u32(&ob_digit, 0, PyLong_BASE, x, &status);
-#elif PYLONG_BITS_IN_DIGIT == 15
-    n = mpd_qexport_u16(&ob_digit, 0, PyLong_BASE, x, &status);
-#else
-    #error "PYLONG_BITS_IN_DIGIT should be 15 or 30"
-#endif
+    int64_t val = mpd_qget_i64(x, &status);
 
-    if (n == SIZE_MAX) {
-        PyErr_NoMemory();
+    if (!status) {
+        mpd_del(x);
+        return PyLong_FromInt64(val);
+    }
+    assert(!mpd_iszero(x));
+
+    const PyLongLayout *layout = PyLong_GetNativeLayout();
+
+    assert(layout->bits_per_digit < 32);
+    assert(layout->digits_order == -1);
+    assert(layout->digit_endianness == (PY_LITTLE_ENDIAN ? -1 : 1));
+    assert(layout->digit_size == 2 || layout->digit_size == 4);
+
+    uint32_t base = (uint32_t)1 << layout->bits_per_digit;
+    size_t n, len = mpd_sizeinbase(x, base);
+    void *digits;
+    PyLongWriter *writer = PyLongWriter_Create(mpd_isnegative(x), len, &digits);
+
+    if (writer == NULL) {
         mpd_del(x);
         return NULL;
     }
 
-    if (n == 1) {
-        sdigit val = mpd_arith_sign(x) * ob_digit[0];
-        mpd_free(ob_digit);
-        mpd_del(x);
-        return PyLong_FromLong(val);
+    status = 0;
+    /* The mpd_qexport_*() functions used here assume that no resizing occurs,
+       that is, 'len' was obtained via mpd_sizeinbase().  We also fill 'digits'
+       with zeros first since 'len' can be overestimated. */
+    if (layout->digit_size == 4) {
+        memset(digits, 0, 4*len);
+        n = mpd_qexport_u32((uint32_t **)&digits, len, base, x, &status);
+    }
+    else {
+        memset(digits, 0, 2*len);
+        n = mpd_qexport_u16((uint16_t **)&digits, len, base, x, &status);
     }
 
-    assert(n > 0);
-    assert(!mpd_iszero(x));
-    pylong = _PyLong_FromDigits(mpd_isnegative(x), n, ob_digit);
-    mpd_free(ob_digit);
+    if (n == SIZE_MAX) {
+        PyErr_NoMemory();
+        PyLongWriter_Discard(writer);
+        mpd_del(x);
+        return NULL;
+    }
+
+    assert(n <= len);
     mpd_del(x);
-    return (PyObject *) pylong;
+    return PyLongWriter_Finish(writer);
 }
 
 /* Convert a Decimal to its exact integer ratio representation. */
